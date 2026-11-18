@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DocDash – QueueZero Clinic</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  @keyframes pulseRing {
+    0% { box-shadow: 0 0 0 0 rgba(251,191,36,0.7); }
+    70% { box-shadow: 0 0 0 18px rgba(251,191,36,0); }
+    100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); }
+  }
+  .pulse-amber { animation: pulseRing 1.6s infinite; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<!-- ===== NAV ===== -->
+<nav class="bg-blue-700 text-white px-6 py-3 flex items-center gap-6 shadow">
+  <div class="font-black text-xl tracking-tight">DocDash</div>
+  <button onclick="showTab('directory')" class="hover:underline">Directory</button>
+  <button onclick="showTab('patient')" class="hover:underline">My Appointment</button>
+  <button onclick="showTab('doctor')" class="hover:underline">Doctor Console</button>
+  <span class="ml-auto text-xs opacity-80">QueueZero Hack · frontend-only demo</span>
+</nav>
+
+<!-- ===== DIRECTORY TAB ===== -->
+<section id="tab-directory" class="p-6 max-w-6xl mx-auto">
+  <h1 class="text-2xl font-bold mb-4">Find a Doctor</h1>
+  <div class="flex gap-3 mb-6">
+    <select id="filterSpec" class="border p-2 rounded bg-white" onchange="renderDirectory()">
+      <option value="">All Specialties</option>
+    </select>
+    <select id="filterClinic" class="border p-2 rounded bg-white" onchange="renderDirectory()">
+      <option value="">All Clinics</option>
+    </select>
+  </div>
+  <div id="doctorGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+</section>
+
+<!-- ===== PATIENT TAB ===== -->
+<section id="tab-patient" class="p-6 max-w-xl mx-auto hidden">
+  <div id="patientEmpty" class="text-slate-500 text-center py-20">
+    No appointment selected. Book a token from the Directory tab.
+  </div>
+  <div id="patientPanel" class="hidden">
+    <h1 class="text-2xl font-bold mb-3">Your Token</h1>
+    <div class="bg-blue-600 text-white p-6 rounded-2xl text-center mb-5 shadow-lg">
+      <div class="text-xs uppercase tracking-wider opacity-80">Token</div>
+      <div id="myTokenNo" class="text-6xl font-black leading-none my-1">#—</div>
+      <div id="myDoctorLine" class="text-sm opacity-90">—</div>
+    </div>
+    <div class="grid grid-cols-3 gap-3 mb-5 text-center">
+      <div class="border rounded-xl p-3 bg-white">
+        <div class="text-xs text-slate-500">Now Serving</div>
+        <div id="statActive" class="text-2xl font-bold">—</div>
+      </div>
+      <div class="border rounded-xl p-3 bg-white">
+        <div class="text-xs text-slate-500">Next</div>
+        <div id="statNext" class="text-2xl font-bold">—</div>
+      </div>
+      <div class="border rounded-xl p-3 bg-white">
+        <div class="text-xs text-slate-500">Doctor</div>
+        <div id="statStatus" class="text-sm font-bold mt-1">—</div>
+      </div>
+    </div>
+    <div id="etaBanner"
+      class="p-5 rounded-xl text-center text-lg font-bold bg-green-100 text-green-900">
+      —
+    </div>
+    <div class="mt-4 text-xs text-slate-500">
+      Auto-refresh every 2s. Open Doctor Console in another tab and click "Call Next" to see live updates.
+    </div>
+  </div>
+</section>
+
+<!-- ===== DOCTOR TAB ===== -->
+<section id="tab-doctor" class="p-6 max-w-3xl mx-auto hidden">
+  <div class="flex items-center gap-3 mb-4">
+    <label class="text-sm text-slate-600">Doctor:</label>
+    <select id="doctorSelect" class="border p-2 rounded bg-white" onchange="renderDoctorConsole()"></select>
+  </div>
+
+  <h2 id="docName" class="text-2xl font-bold">—</h2>
+  <p id="docMeta" class="text-slate-500 mb-4"></p>
+
+  <div class="bg-indigo-600 text-white p-5 rounded-xl mb-5 shadow">
+    <div class="text-xs uppercase tracking-wider opacity-80">Currently Serving</div>
+    <div id="activeServing" class="text-3xl font-black mt-1">—</div>
+  </div>
+
+  <div class="flex gap-2 mb-5 flex-wrap">
+    <button onclick="callNext()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold">Call Next Patient</button>
+    <button onclick="delayDoctor(10)" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-semibold">Delay 10 mins</button>
+    <button onclick="emergencyInsert()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold">Emergency Insert</button>
+    <button onclick="resetDemo()" class="ml-auto text-xs text-slate-500 hover:text-red-600 underline">Reset demo data</button>
+  </div>
+
+  <h3 class="font-bold mb-2">Waiting Queue</h3>
+  <div class="bg-white rounded-xl shadow overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100">
+        <tr><th class="p-2 text-left">Token</th><th class="text-left">Patient</th><th></th></tr>
+      </thead>
+      <tbody id="queueTable"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== BOOKING MODAL ===== -->
+<div id="bookModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center p-4">
+  <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+    <h3 class="text-xl font-bold mb-1">Book Token</h3>
+    <p id="bookDoctorName" class="text-slate-500 text-sm mb-4"></p>
+    <label class="text-sm">Patient Name</label>
+    <input id="bookName" class="w-full border p-2 rounded mb-3" placeholder="e.g. Aditi Sharma" />
+    <label class="text-sm">Phone</label>
+    <input id="bookPhone" class="w-full border p-2 rounded mb-4" placeholder="9999999999" />
+    <div class="flex gap-2 justify-end">
+      <button onclick="closeModal()" class="px-4 py-2 rounded hover:bg-slate-100">Cancel</button>
+      <button onclick="confirmBook()" class="bg-blue-600 text-white px-4 py-2 rounded font-semibold">Confirm Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SMS TOAST ===== -->
+<div id="smsToast"
+  class="fixed bottom-6 right-6 hidden bg-amber-200 border-l-4 border-amber-600 text-amber-900 px-5 py-4 rounded-lg shadow-xl max-w-xs">
+  <div class="font-bold text-sm">📩 SMS Alert</div>
+  <div class="text-sm mt-1">Please arrive at the clinic now — you're 2 tokens away!</div>
+</div>
+
+<script>
+/* ==================================================================
+   DocDash — Single-file demo. All data lives in localStorage.
+   Keys:
+     dd_clinics, dd_doctors, dd_tokens, dd_consult_log, dd_my_token
+   ================================================================== */
+
+const LS = {
+  clinics: 'dd_clinics',
+  doctors: 'dd_doctors',
+  tokens:  'dd_tokens',
+  log:     'dd_consult_log',
+  mine:    'dd_my_token',
+};
+
+/* ---------- SEED ---------- */
+function seedData() {
+  if (localStorage.getItem(LS.clinics)) return;
+
+  const clinics = [
+    { id: 1, name: 'City Care Clinic', address: 'MG Road' },
+    { id: 2, name: 'Green Valley Clinic', address: 'Indiranagar' },
+    { id: 3, name: 'Sunrise Health Center', address: 'Koramangala' },
+    { id: 4, name: 'Metro Medical', address: 'Whitefield' },
+  ];
+
+  const names = ['Mehta','Rao','Iyer','Shah','Khan','Patel','Nair','Reddy'];
+  const specialties = ['General Medicine','Cardiology','Pediatrics','Orthopedics'];
+
+  const doctors = [];
+  let did = 1;
+  for (const c of clinics) {
+    for (let i = 0; i < 2; i++) {
+      doctors.push({
+        id: did,
+        name: `Dr. ${names[did - 1]}`,
+        specialty: specialties[(did - 1) % specialties.length],
+        clinic_id: c.id,
+        fee: 400 + did * 50,
+        avg_consult_min: 12,
+        status: 'In Consultation',
+        offset_delay: 0,
+      });
+      did++;
+    }
+  }
+
+  // 20 sample tokens for doctor 1 (Cardiology at City Care)
+  const tokens = [];
+  for (let i = 1; i <= 20; i++) {
+    tokens.push({
+      id: i,
+      doctor_id: 1,
+      clinic_id: 1,
+      token_no: i,
+      shift: 'morning',
+      patient_name: `Patient ${i}`,
+      patient_phone: '9999999999',
+      status: i === 1 ? 'serving' : 'waiting',
+      consulted_at: i === 1 ? new Date().toISOString() : null,
+    });
+  }
+
+  localStorage.setItem(LS.clinics, JSON.stringify(clinics));
+  localStorage.setItem(LS.doctors, JSON.stringify(doctors));
+  localStorage.setItem(LS.tokens, JSON.stringify(tokens));
+  localStorage.setItem(LS.log, JSON.stringify([]));
+}
+
+/* ---------- DATA ACCESS ---------- */
+const getClinics = () => JSON.parse(localStorage.getItem(LS.clinics) || '[]');
+const getDoctors = () => JSON.parse(localStorage.getItem(LS.doctors) || '[]');
+const getTokens  = () => JSON.parse(localStorage.getItem(LS.tokens)  || '[]');
+const getLog     = () => JSON.parse(localStorage.getItem(LS.log)     || '[]');
+
+const saveDoctors = d => { localStorage.setItem(LS.doctors, JSON.stringify(d)); broadcast(); };
+const saveTokens  = t => { localStorage.setItem(LS.tokens,  JSON.stringify(t)); broadcast(); };
+const saveLog     = l => { localStorage.setItem(LS.log,     JSON.stringify(l)); broadcast(); };
+
+function broadcast() {
+  // Trigger localStorage 'storage' event in *other* tabs
+  const ping = Date.now().toString();
+  localStorage.setItem('dd_ping', ping);
+}
+
+/* ---------- EWMA ESTIMATOR ---------- */
+function dynamicAvg(doctorId, fallback) {
+  const rows = getLog().filter(r => r.doctor_id === doctorId).slice(-5).reverse();
+  if (!rows.length) return fallback;
+  const alpha = 0.5;
+  let ewma = rows[0].duration_min;
+  for (let i = 1; i < rows.length; i++) {
+    ewma = alpha * rows[i].duration_min + (1 - alpha) * ewma;
+  }
+  return ewma;
+}
+
+/* ---------- QUEUE SNAPSHOT ---------- */
+function queueSnapshot(doctorId) {
+  const doc = getDoctors().find(d => d.id === doctorId);
+  const tokens = getTokens().filter(t => t.doctor_id === doctorId);
+  const active = tokens.find(t => t.status === 'serving') || null;
+  const waiting = tokens.filter(t => t.status === 'waiting').sort((a, b) => a.token_no - b.token_no);
+  const avg = dynamicAvg(doctorId, doc.avg_consult_min);
+  return {
+    doctor: { ...doc, avg_consult_min: +avg.toFixed(1) },
+    activeToken: active,
+    nextToken: waiting[0] || null,
+    waiting,
+  };
+}
+
+/* ---------- NAV ---------- */
+let currentTab = 'directory';
+function showTab(tab) {
+  currentTab = tab;
+  ['directory', 'patient', 'doctor'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+  });
+  if (tab === 'directory') renderDirectory();
+  if (tab === 'patient')   renderPatient();
+  if (tab === 'doctor')    renderDoctorConsole();
+}
+
+/* ---------- DIRECTORY ---------- */
+function populateFilters() {
+  const specs = [...new Set(getDoctors().map(d => d.specialty))];
+  const specSel = document.getElementById('filterSpec');
+  specSel.innerHTML = '<option value="">All Specialties</option>' +
+    specs.map(s => `<option>${s}</option>`).join('');
+
+  const clinicSel = document.getElementById('filterClinic');
+  clinicSel.innerHTML = '<option value="">All Clinics</option>' +
+    getClinics().map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
+function renderDirectory() {
+  const spec = document.getElementById('filterSpec').value;
+  const clinic = document.getElementById('filterClinic').value;
+  const grid = document.getElementById('doctorGrid');
+
+  const list = getDoctors().filter(d =>
+    (!spec || d.specialty === spec) && (!clinic || d.clinic_id === +clinic));
+
+  if (!list.length) {
+    grid.innerHTML = '<p class="text-slate-500">No doctors match your filters.</p>';
+    return;
+  }
+
+  grid.innerHTML = list.map(d => {
+    const clinicName = getClinics().find(c => c.id === d.clinic_id)?.name || '';
+    return `
+      <div class="border rounded-xl p-4 bg-white shadow hover:shadow-md transition">
+        <h2 class="font-bold text-lg">${d.name}</h2>
+        <p class="text-slate-600">${d.specialty}</p>
+        <p class="text-sm text-slate-500">${clinicName}</p>
+        <p class="text-sm mt-1">₹${d.fee} · ~${d.avg_consult_min} min/patient</p>
+        <button onclick="openBookModal(${d.id})"
+          class="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold">
+          Book Token
+        </button>
+      </div>`;
+  }).join('');
+}
+
+/* ---------- BOOKING ---------- */
+let bookingDoctorId = null;
+
+function openBookModal(doctorId) {
+  bookingDoctorId = doctorId;
+  const doc = getDoctors().find(d => d.id === doctorId);
+  document.getElementById('bookDoctorName').textContent = `${doc.name} · ${doc.specialty}`;
+  document.getElementById('bookName').value = '';
+  document.getElementById('bookPhone').value = '';
+  document.getElementById('bookModal').classList.remove('hidden');
+  document.getElementById('bookModal').classList.add('flex');
+}
+
+function closeModal() {
+  document.getElementById('bookModal').classList.add('hidden');
+  document.getElementById('bookModal').classList.remove('flex');
+}
+
+function confirmBook() {
+  const name = document.getElementById('bookName').value.trim();
+  const phone = document.getElementById('bookPhone').value.trim();
+  if (!name || !phone) { alert('Please enter name and phone'); return; }
+
+  const tokens = getTokens();
+  const docTokens = tokens.filter(t => t.doctor_id === bookingDoctorId);
+  const nextNo = docTokens.length ? Math.max(...docTokens.map(t => t.token_no)) + 1 : 1;
+
+  const newToken = {
+    id: Date.now(),                         // unique id
+    doctor_id: bookingDoctorId,
+    clinic_id: getDoctors().find(d => d.id === bookingDoctorId).clinic_id,
+    token_no: nextNo,
+    shift: 'morning',
+    patient_name: name,
+    patient_phone: phone,
+    status: 'waiting',
+    consulted_at: null,
+  };
+  tokens.push(newToken);
+  saveTokens(tokens);
+
+  localStorage.setItem(LS.mine, JSON.stringify(newToken.id));
+  closeModal();
+  alert(`✅ Booked Token #${nextNo}. Opening your appointment dashboard.`);
+  showTab('patient');
+}
+
+/* ---------- PATIENT VIEW ---------- */
+let patientInterval = null;
+let alerted2Away = false;
+
+function renderPatient() {
+  clearInterval(patientInterval);
+  const myId = JSON.parse(localStorage.getItem(LS.mine) || 'null');
+  const myToken = getTokens().find(t => t.id === myId);
+
+  if (!myToken) {
+    document.getElementById('patientEmpty').classList.remove('hidden');
+    document.getElementById('patientPanel').classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('patientEmpty').classList.add('hidden');
+  document.getElementById('patientPanel').classList.remove('hidden');
+  document.getElementById('myTokenNo').textContent = '#' + myToken.token_no;
+
+  const tick = () => {
+    const fresh = getTokens().find(t => t.id === myId);
+    if (!fresh) return;
+    const snap = queueSnapshot(fresh.doctor_id);
+
+    document.getElementById('myDoctorLine').textContent =
+      `${snap.doctor.name} · ${snap.doctor.specialty}`;
+    document.getElementById('statActive').textContent =
+      snap.activeToken ? '#' + snap.activeToken.token_no : '—';
+    document.getElementById('statNext').textContent =
+      snap.nextToken ? '#' + snap.nextToken.token_no : '—';
+    document.getElementById('statStatus').textContent = snap.doctor.status || 'In Consultation';
+
+    const activeNo = snap.activeToken ? snap.activeToken.token_no : 0;
+    const myPos = Math.max(0, fresh.token_no - activeNo - 1);
+    const avg = snap.doctor.avg_consult_min;
+    const delay = snap.doctor.offset_delay || 0;
+    const eta = Math.max(0, Math.round(myPos * avg + delay));
+
+    const banner = document.getElementById('etaBanner');
+    if (fresh.status === 'serving') {
+      banner.textContent = "🟢 It's your turn — please enter the consultation room.";
+      banner.className = 'p-5 rounded-xl text-center text-lg font-bold bg-green-600 text-white pulse-amber';
+    } else if (fresh.status === 'completed') {
+      banner.textContent = '✅ Consultation completed. Get well soon!';
+      banner.className = 'p-5 rounded-xl text-center text-lg font-bold bg-slate-200 text-slate-700';
+    } else if (myPos <= 2) {
+      banner.textContent = `⚠️ ${myPos} patient(s) ahead · Est. wait ≈ ${eta} mins — Please arrive now!`;
+      banner.className = 'p-5 rounded-xl text-center text-lg font-bold bg-amber-200 text-amber-900 pulse-amber';
+    } else {
+      banner.textContent = `${myPos} patients ahead · Est. wait ≈ ${eta} mins`;
+      banner.className = 'p-5 rounded-xl text-center text-lg font-bold bg-green-100 text-green-900';
+    }
+
+    // SMS simulator at exactly 2 away
+    if (myPos === 2 && fresh.status === 'waiting' && !alerted2Away) {
+      alerted2Away = true;
+      showSmsToast();
+    }
+    if (myPos > 2) alerted2Away = false;
+  };
+
+  tick();
+  patientInterval = setInterval(tick, 2000);
+}
+
+function showSmsToast() {
+  const toast = document.getElementById('smsToast');
+  toast.classList.remove('hidden');
+  setTimeout(() => toast.classList.add('hidden'), 8000);
+}
+
+/* ---------- DOCTOR CONSOLE ---------- */
+let doctorInterval = null;
+
+function populateDoctorSelect() {
+  const sel = document.getElementById('doctorSelect');
+  sel.innerHTML = getDoctors()
+    .map(d => `<option value="${d.id}">${d.name} — ${d.specialty}</option>`)
+    .join('');
+}
+
+function renderDoctorConsole() {
+  clearInterval(doctorInterval);
+  const doctorId = +document.getElementById('doctorSelect').value || 1;
+
+  const tick = () => {
+    const snap = queueSnapshot(doctorId);
+    document.getElementById('docName').textContent = snap.doctor.name;
+    document.getElementById('docMeta').textContent =
+      `${snap.doctor.specialty} · Avg ${snap.doctor.avg_consult_min} min/patient · Delay offset ${snap.doctor.offset_delay || 0} min`;
+    document.getElementById('activeServing').textContent =
+      snap.activeToken ? `#${snap.activeToken.token_no} — ${snap.activeToken.patient_name}` : '—';
+
+    document.getElementById('queueTable').innerHTML = snap.waiting.length
+      ? snap.waiting.map(t => `
+          <tr class="border-b">
+            <td class="p-2 font-mono">#${t.token_no}</td>
+            <td>${t.patient_name}</td>
+            <td class="text-right pr-2">
+              <button onclick="skipToken(${t.id})" class="text-red-600 text-xs hover:underline">Mark Absent</button>
+            </td>
+          </tr>`).join('')
+      : '<tr><td colspan="3" class="p-4 text-slate-500">No patients waiting.</td></tr>';
+  };
+
+  tick();
+  doctorInterval = setInterval(tick, 2000);
+}
+
+function callNext() {
+  const doctorId = +document.getElementById('doctorSelect').value;
+  const tokens = getTokens();
+
+  // Complete current serving
+  const current = tokens.find(t => t.doctor_id === doctorId && t.status === 'serving');
+  if (current) {
+    const dur = current.consulted_at
+      ? Math.max(1, (Date.now() - new Date(current.consulted_at).getTime()) / 60000)
+      : 12;
+    current.status = 'completed';
+    current.duration_min = +dur.toFixed(1);
+    const log = getLog();
+    log.push({ doctor_id: doctorId, duration_min: +dur.toFixed(1) });
+    saveLog(log);
+  }
+
+  // Serve next waiting
+  const next = tokens
+    .filter(t => t.doctor_id === doctorId && t.status === 'waiting')
+    .sort((a, b) => a.token_no - b.token_no)[0];
+  if (next) {
+    next.status = 'serving';
+    next.consulted_at = new Date().toISOString();
+  } else {
+    alert('No more patients in queue.');
+  }
+
+  saveTokens(tokens);
+  renderDoctorConsole();
+}
+
+function skipToken(tokenId) {
+  const tokens = getTokens();
+  const t = tokens.find(x => x.id === tokenId);
+  if (!t) return;
+  t.status = 'skipped';
+  saveTokens(tokens);
+  renderDoctorConsole();
+}
+
+function delayDoctor(minutes = 10) {
+  const doctorId = +document.getElementById('doctorSelect').value;
+  const doctors = getDoctors();
+  const doc = doctors.find(d => d.id === doctorId);
+  doc.offset_delay = (doc.offset_delay || 0) + minutes;
+  saveDoctors(doctors);
+  renderDoctorConsole();
+  alert(`Added ${minutes} min delay. All patient ETAs updated.`);
+}
+
+function emergencyInsert() {
+  const doctorId = +document.getElementById('doctorSelect').value;
+  const doc = getDoctors().find(d => d.id === doctorId);
+  const tokens = getTokens();
+  const waiting = tokens.filter(t => t.doctor_id === doctorId && t.status === 'waiting');
+  const minNo = waiting.length ? Math.min(...waiting.map(t => t.token_no)) : 1;
+
+  tokens.push({
+    id: Date.now(),
+    doctor_id: doctorId,
+    clinic_id: doc.clinic_id,
+    token_no: minNo - 0.5,          // jumps ahead
+    shift: 'morning',
+    patient_name: '🚨 EMERGENCY',
+    patient_phone: '000',
+    status: 'waiting',
+    consulted_at: null,
+  });
+  saveTokens(tokens);
+  renderDoctorConsole();
+  alert('Emergency patient inserted at the front of the queue.');
+}
+
+function resetDemo() {
+  if (!confirm('Reset all data to the initial seed? This clears your bookings.')) return;
+  Object.values(LS).forEach(k => localStorage.removeItem(k));
+  localStorage.removeItem('dd_ping');
+  seedData();
+  populateFilters();
+  populateDoctorSelect();
+  showTab('directory');
+  alert('Demo data reset.');
+}
+
+/* ---------- CROSS-TAB SYNC ---------- */
+window.addEventListener('storage', (e) => {
+  if (e.key === 'dd_ping') {
+    if (currentTab === 'patient') renderPatient();
+    if (currentTab === 'doctor') renderDoctorConsole();
+    if (currentTab === 'directory') renderDirectory();
+  }
+});
+
+/* ---------- BOOT ---------- */
+seedData();
+populateFilters();
+populateDoctorSelect();
+showTab('directory');
+</script>
+</body>
+</html>
